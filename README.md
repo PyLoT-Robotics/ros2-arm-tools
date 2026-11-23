@@ -1,15 +1,19 @@
 # ROS 2 Arm Tools
 
-名前付き関節ポーズの教示・保存・再生と、関節単位の微調整を行うツールです。
-ROSのJointStateとFollowJointTrajectoryを使い、PyLoTのRobotクラス・固定モータIDから
-切り離しました。モータを直接開かず、機体のドライバとros2_controlを利用します。
+English · [日本語](docs/README.ja.md)
+
+Teach, store and replay named joint poses, and jog individual joints.
+The tools use ROS JointState and FollowJointTrajectory interfaces instead of
+PyLoT's Robot facade or fixed motor IDs. They use the robot's existing driver
+and ros2_control rather than opening motor ports directly.
 
 ## Configure a robot
 
-`config/example_arm.yaml` を参考に実機のjoint名・上下限を定義します。
-revoluteはrad、prismaticはmです。サンプルの上下限は実機の校正値ではありません。
-コントローラに含む関節をすべて指定してください。別コントローラのグリッパーを
-操作する場合は別profileとaction名を指定します。
+Use `config/example_arm.yaml` as a template for your robot's joint names and
+limits. Revolute joints use radians; prismatic joints use metres. The example
+limits are illustrative, not calibrated values for a real robot. Include every
+joint controlled by the selected controller. For a gripper on another controller,
+use a separate profile and action name.
 
 ```yaml
 joints:
@@ -27,21 +31,24 @@ ros2-arm-tools --profile my_arm.yaml --file poses.yaml move ready --duration 3 -
 ros2-arm-tools --profile my_arm.yaml jog shoulder 0.02 --duration 1
 ```
 
-`teach` は `/joint_states` の最新の値を記録します。手で教示する際のトルク制御は
-機体側で行ってください。本ツールはトルクを切り替えません。
-`jog` は新しく取得した関節状態にdeltaを加えて送信する1ステップの微調整です。
-角度はrad、直動はmです。現在値が取得できない場合に0から動かす処理はありません。
+`teach` records the latest `/joint_states` values. Manage torque on the robot
+side when physically guiding the arm; this tool does not change torque settings.
+`jog` performs one adjustment by adding a delta to newly acquired joint state.
+Its delta is in radians for revolute joints or metres for prismatic joints.
+There is no fallback that moves from an assumed zero position if state is missing.
 
-教示・jogは全設定関節の有効で新しいJointStateが必要です。可動域外・NaN/inf・
-不明な関節はエラーです。再生も現在のprofileで再検証します。JointStateのheader.stampを
-設定してください。既定のactionは `/arm_controller/follow_joint_trajectory`、
-`--action` で変更できます。結果を待ち、タイムアウト時はキャンセルを要求します。
-`--states` で関節状態トピックを指定できます。durationは0より大きく86400秒以下です。
+Teaching and jogging require complete, valid, fresh state for every configured
+joint. Out-of-range values, NaN/inf and unknown joints are rejected. Replay
+revalidates poses against the current profile. Populate JointState's
+`header.stamp`. The default action is `/arm_controller/follow_joint_trajectory`;
+change it with `--action`. The client waits for the result and requests cancellation
+on timeout. Use `--states` to select the joint-state topic. Duration must be
+greater than zero and at most 86,400 seconds.
 
-保存はファイルロックとatomic renameを使用し、壊れたファイルや同名への暗黙の上書きを
-拒否します。同名で教示し直す場合は `--replace` を指定します。
-保存形式は `{schema_version: 1, poses: {NAME: {JOINT: SI_VALUE}}}`。
-旧Luna armポーズファイルは自動読み込みしません。
+Storage uses file locking and atomic rename, rejects corrupt files and requires
+`--replace` to teach over an existing pose. Its format is
+`{schema_version: 1, poses: {NAME: {JOINT: SI_VALUE}}}`.
+Legacy Luna arm pose files are not imported automatically.
 
 ## Capture-only ROS node
 
@@ -51,13 +58,15 @@ ros2 run arm_tools arm_tools_node --ros-args -p profile:=/absolute/my_arm.yaml \
 ros2 service call /arm_tools/record std_srvs/srv/Trigger '{}'
 ```
 
-常駐ノードは教示と `/arm_tools/list` のみで、起動時に動作指令を出しません。
-`profile` は必須です。結合テストでは合成JointStateとテスト用軌道サーバーを使い、
-教示値の保存と送信する関節名・位置・結果処理を確認します。実アームは動かしません。
+The persistent node supports recording and `/arm_tools/list` only; it sends no
+motion commands on startup. `profile` is required. Integration tests use synthetic
+JointState data and a test trajectory server to verify saved values, joint names,
+transmitted positions and result handling. They do not move a real arm.
 
 ## Installation and checks
 
-Python 3.10+。リポジトリのルートで実行します。通常のPython環境ではROSは不要です。
+Requires Python 3.10+. Run these commands from the repository root.
+The core works in a regular Python environment without ROS.
 
 ```bash
 python3 -m venv .venv
@@ -67,7 +76,8 @@ python -m pytest -q
 python -m arm_tools.cli demo
 ```
 
-ROS 2 Jazzyで使う場合は通常のワークスペースのsrcに配置し、ROS環境でビルドします。
+For ROS 2 Jazzy, place the repository in a regular workspace's `src` directory
+and build it in a ROS environment:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -76,12 +86,15 @@ colcon build --symlink-install --packages-select arm_tools
 source install/setup.bash
 ```
 
-`config/params.yaml` を自分の入出力に合わせて変更してください。パラメータは起動時設定です。
-`ros2 launch arm_tools arm_tools.launch.py params_file:=/absolute/path/to/params.yaml` で起動できます。
-CIはPython 3.10/3.12でコアテストと合成デモを実行します。ROS結合テストはROS環境で
-実行し、それ以外ではスキップします。モデル・実センサ・実アームの性能は認証しません。
+Adapt `config/params.yaml` to your inputs and outputs. Parameters are read at startup.
+Start the node with
+`ros2 launch arm_tools arm_tools.launch.py params_file:=/absolute/path/to/params.yaml`.
+CI runs core tests and the synthetic demo on Python 3.10 and 3.12. ROS integration
+tests run when ROS is available and are skipped otherwise. These checks do not
+certify model, physical-sensor or real-arm performance.
 
 ## License and source
 
-現在はprivateリポジトリです。Apache-2.0。元のコミット・ファイルと変更範囲は
-[PROVENANCE.md](PROVENANCE.md) を参照してください。元モノレポへの依存はありません。
+This repository is currently private. Apache-2.0. See
+[PROVENANCE.md](PROVENANCE.md) for the source commit, files and extraction changes.
+There is no dependency on the original monorepo.
