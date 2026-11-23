@@ -1,0 +1,7 @@
+arm_tools:
+  ros__parameters:
+    profile: ''
+    file: ~/.ros/arm_poses.yaml
+    pose_name: taught
+    joint_states_topic: /joint_states
+    replace_existing: false
